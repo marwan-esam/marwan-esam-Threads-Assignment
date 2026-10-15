@@ -1,5 +1,8 @@
 # Assignment 02 — Answers
 
+Student name: Marwan Mohamed Esam  
+Group / ID: 2
+
 ## What is wrong
 
 When running the un-fixed starter code across multiple runs, two severe concurrency defects occur:
