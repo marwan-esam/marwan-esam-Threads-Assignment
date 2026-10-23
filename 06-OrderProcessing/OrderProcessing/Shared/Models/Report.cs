@@ -14,5 +14,8 @@ public class Report
   public decimal AverageOrderValue {get; set;}
   public DateTime GeneratedAt {get; set;}
 
-  public Report() {}
+  public Report()
+  {
+    GeneratedAt = DateTime.Now;
+  }
 }

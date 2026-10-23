@@ -43,7 +43,7 @@ public class JsonFileStore
       string fullPath = Path.Combine(DataFiles.DataDir, fileName);
       if(!File.Exists(fullPath)) return [];
       string json = await File.ReadAllTextAsync(fullPath, Encoding.UTF8, ct);
-      var list = JsonSerializer.Deserialize<List<T>>(json.ToString(), _options);
+      var list = JsonSerializer.Deserialize<List<T>>(json, _options);
       ArgumentNullException.ThrowIfNull(list);
       return list;  
     } catch(Exception e) when (e is JsonException || e is ArgumentNullException)
