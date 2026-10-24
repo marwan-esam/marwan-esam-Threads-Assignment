@@ -58,6 +58,9 @@ At runtime, all JSON collections, generated invoices, and reports are stored in:
 | **Phase 2: Order #1 Pricing** | Sequential | `3.7 s` | `CalculateSubtotalAsync` $\to$ `GetDiscountAsync` $\to$ `CalculateShippingCostAsync` |
 | **Phase 2: Order #1 Pricing** | Concurrent | `2.3 s` | `CalculateSubtotalAsync`, then `GetDiscountAsync` & `CalculateShippingCostAsync` concurrently |
 | **Phase 2: Full Pipeline (20 orders)** | Concurrent | `13.2 s` | Concurrent validation + stock reservation + pricing + CPU invoice generation + saving (`2.3x` faster than Phase 1 validation alone) |
+| **Phase 3: Full Checkout (20 orders)** | Concurrent (10 tasks) | `10.8 s` | Full checkout pipeline with payment gateway, refunds, compensation, email retries |
+| **Phase 3: Comparison (Orders #1-#10)** | Sync (10 threads) | `9.0 s` | Dedicated OS threads with `Thread.Sleep`, `Join()` |
+| **Phase 3: Comparison (Orders #1-#10)** | Async (10 tasks) | `9.8 s` | Non-blocking async tasks with `Task.Delay`, `await` |
 
 ---
 
@@ -207,3 +210,108 @@ A C# `lock` (`Monitor.Enter` / `Monitor.Exit`) enforces **thread affinity**: the
 In `ReserveStockUnsafeAsync`, reading `products.json`, checking `if (product.StockQuantity >= qty)`, and writing the decremented stock were separated by `await Task.Delay(...)` points with no lock spanning the entire transaction. When Orders #10 and #11 ran concurrently for Product #4 (`StockQuantity = 1`), Order #11 read `products.json` while Order #10 was suspended at `await Task.Delay(...)`. Both tasks observed `StockQuantity == 1`, both passed the check, both wrote `1 - 1 = 0`, and both returned `true`—overselling the last keyboard (a classic check-then-act race condition and lost update).
 
 We prevented it in `ReserveStockAsync` and `ReleaseStockAsync` by guarding the entire check + delay + write sequence with a per-product `SemaphoreSlim(1, 1)` (`_productLocks.GetOrAdd(productId, _ => new SemaphoreSlim(1, 1))`) using `await productLock.WaitAsync(ct)` in a `try / finally` block alongside `JsonFileStore.UpdateListAsync`.
+
+---
+
+## 6. Phase 3 — Full Checkout Workflow & Questions
+
+### Phase 3 Checkout Summary
+```text
+==========================================================
+  PHASE 3 — FULL CHECKOUT WORKFLOW
+==========================================================
+Loaded 20 incoming orders. Starting concurrent processing...
+All 20 orders processed in 10.8 seconds.
+
+===== Final Orders Table =====
+Order    | Status          | Total        | Reason
+---------------------------------------------------------------------------
+#1       | Completed       | $980.00      | -
+#2       | Completed       | $767.30      | -
+#3       | Completed       | $146.70      | -
+#4       | Rejected        | -            | Customer is inactive
+#5       | PaymentFailed   | -            | Payment gateway timeout (3s)
+#6       | Completed       | $42.90       | -
+#7       | Completed       | $218.00      | -
+#8       | PaymentFailed   | -            | Card declined by issuer
+#9       | Rejected        | -            | Insufficient stock for 'Wireless Mouse'
+#10      | Completed       | $93.80       | -
+#11      | Rejected        | -            | Insufficient stock for 'Mechanical Keyboard'
+#12      | Rejected        | -            | Coupon 'OLD20' has expired
+#13      | Failed          | -            | Database save failed after payment; payment TXN-9B4B7FDC8872 refunded
+#14      | Completed       | $149.45      | -
+#15      | Rejected        | -            | Customer #99 not found
+#16      | Completed       | $413.40      | -
+#17      | Completed       | $687.30      | -
+#18      | Rejected        | -            | Coupon 'FAKE50' does not exist
+#19      | Completed       | $76.90       | -
+#20      | Completed       | $1012.50     | -
+
+Summary: 11 Completed, 6 Rejected, 2 PaymentFailed, 1 Failed
+```
+
+### Final File State Verification (Matches Task 9.4)
+- **`orders.json`**: 20 records (11 Completed, 6 Rejected [#4, #9, #11, #12, #15, #18], 2 PaymentFailed [#5, #8], 1 Failed [#13]).
+- **`payments.json`**: 13 records (11 Captured, 1 Declined [#8], 1 Refunded [#13]). Order #5 timed out before capture, so no payment record was saved.
+- **`emails.json`**: 10 records (all Completed orders except #17). Order #3 succeeded on attempt 3 (`Attempts = 3`).
+- **`email_retry.json`**: 1 record for Order #17 (`Attempts = 4`, `LastError = "SMTP connection failed for Order #17 (attempt 4)"`).
+- **`products.json`**: Stock was decremented only by Completed orders. Mechanical Keyboard stock is `0` (Order #10 succeeded, Order #11 was Rejected).
+
+---
+
+### Phase 3 Questions & Answers
+
+#### Task 9.6: Sync vs. Async Comparison
+```text
+Sync Version (10 threads):  9.0 s | Process Threads: 15 | ThreadPool.ThreadCount: 5
+Async Version (10 tasks):   9.8 s | Process Threads: 15 | ThreadPool.ThreadCount: 5
+```
+
+##### 1. Does async make one order's workflow faster?
+No. An individual order's sequential workflow takes approximately the same wall-clock time in both versions (around 5–7 seconds of simulated database, payment, and email latencies). Asynchrony does not make an I/O operation faster; it simply frees up the calling thread while the I/O operation is in flight.
+
+##### 2. Why does async scale better for many orders?
+In the synchronous model, each concurrent order requires a dedicated OS thread blocked on `Thread.Sleep` or synchronous I/O. Each thread consumes approximately 1 MB of stack memory, plus OS kernel resources and context-switching overhead.
+In contrast, the asynchronous model releases the thread back to the `ThreadPool` at each `await` point. As a result, hundreds or thousands of orders in flight can be serviced by a tiny pool of worker threads without allocating thousands of operating system threads.
+
+##### 3. What happens to the sync version with 1,000 orders?
+Attempting to create and run 1,000 active operating system threads (`new Thread(...)`) will:
+1. Consume ~1 GB of virtual memory just for thread stacks.
+2. Trigger significant OS context switching and scheduling thrashing, severely degrading CPU cache efficiency.
+3. Potentially cause `OutOfMemoryException` or thread creation failures if OS thread limits or memory limits are exceeded.
+
+##### 4. Why is async essential for apps that call databases, files, and APIs?
+Databases, disk files, and remote web APIs are external I/O operations where the CPU is idle >99% of the time waiting for bytes to travel over network interfaces or storage controllers. Async I/O frees worker threads during these waits, enabling backend services to achieve high throughput and scalability with minimal hardware resources.
+
+---
+
+#### Task 9.7: Fire-and-Forget Investigation
+```csharp
+public async Task ProcessOrderAsync(Order order, Customer customer)
+{
+    await _orderRepository.SaveAsync(order);
+    _emailService.SendConfirmationAsync(order, customer); // not awaited
+    Console.WriteLine("Order processing finished");
+}
+```
+
+##### 1. What is the problem in this code?
+`_emailService.SendConfirmationAsync(order, customer)` returns a `Task` that is never awaited. The method prints `"Order processing finished"` and returns to the caller while the email operation is still running in the background.
+
+##### 2. What happens if the email is still being sent when the method returns, or when the console app exits?
+If the console application exits while the background task is running, the process terminates abruptly, killing any in-flight thread-pool work and leaving the email unsent (or half-written).
+
+##### 3. What happens if the email operation throws an exception?
+Because the task is not awaited, the exception is stored in the unobserved `Task` object. The caller cannot catch it via a surrounding `try/catch` block. When the unobserved task is later collected by the Garbage Collector, it triggers `TaskScheduler.UnobservedTaskException`.
+
+##### 4. How was it fixed?
+Add `await` before the async call:
+```csharp
+await _emailService.SendConfirmationAsync(order, customer);
+```
+
+##### 5. When is `await` necessary, when is fire-and-forget acceptable, and why is `async void` dangerous?
+- **When `await` is necessary:** For any asynchronous operation where the caller depends on the outcome, needs to guarantee completion before proceeding, or needs to catch and handle exceptions.
+- **When fire-and-forget is acceptable:** Almost never in reliable business workflows. The rare exception is non-critical background telemetry/logging where failure does not impact the transaction and unhandled exceptions are caught internally inside the fire-and-forget task.
+- **Why `async void` is dangerous:** `async void` methods cannot be awaited and caller code cannot catch exceptions thrown from them. Any unhandled exception in an `async void` method crashes the process (terminates the CLR app domain).
+- **Why `async void` is acceptable for event handlers:** In UI frameworks (WPF, WinForms, MAUI) and button click handlers, event handler signatures are defined as `void EventHandler(object? sender, EventArgs e)`. An `async void` handler allows asynchronous code to run from a synchronous event delegate signature.

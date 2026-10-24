@@ -8,5 +8,8 @@ public class PaymentTransaction
   public PaymentStatus Status {get; set;}
   public DateTime CreatedAt {get; set;}
 
-  public PaymentTransaction() {}
+  public PaymentTransaction()
+  {
+    CreatedAt = DateTime.Now;
+  }
 }
