@@ -1,0 +1,93 @@
+﻿[
+  {
+    "transactionId": "TXN-28077EB410EF",
+    "orderId": 13,
+    "amount": 309.20,
+    "status": "Refunded",
+    "createdAt": "2026-10-25T00:06:01.1037946+03:00"
+  },
+  {
+    "transactionId": "TXN-A6BF3994BC7C",
+    "orderId": 11,
+    "amount": 89.30,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:01.3494332+03:00"
+  },
+  {
+    "transactionId": "TXN-0DFEBB7458C6",
+    "orderId": 19,
+    "amount": 76.90,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:01.4090471+03:00"
+  },
+  {
+    "transactionId": "TXN-9F1B4C8E83B1",
+    "orderId": 1,
+    "amount": 980.00,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:02.5199757+03:00"
+  },
+  {
+    "transactionId": "TXN-C9782C9FD3C0",
+    "orderId": 2,
+    "amount": 767.30,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:02.5434422+03:00"
+  },
+  {
+    "transactionId": null,
+    "orderId": 8,
+    "amount": 960.00,
+    "status": "Declined",
+    "createdAt": "2026-10-25T00:06:02.6138176+03:00"
+  },
+  {
+    "transactionId": "TXN-7CE9D7BA0FC0",
+    "orderId": 6,
+    "amount": 42.90,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:02.6813206+03:00"
+  },
+  {
+    "transactionId": "TXN-E939478CD91A",
+    "orderId": 14,
+    "amount": 149.45,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:03.3566576+03:00"
+  },
+  {
+    "transactionId": "TXN-B2F0C76DA033",
+    "orderId": 17,
+    "amount": 687.30,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:03.3697832+03:00"
+  },
+  {
+    "transactionId": "TXN-FA8CE27510E7",
+    "orderId": 3,
+    "amount": 146.70,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:03.5342864+03:00"
+  },
+  {
+    "transactionId": "TXN-1292C973696C",
+    "orderId": 16,
+    "amount": 413.40,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:03.8900582+03:00"
+  },
+  {
+    "transactionId": "TXN-7F8DD4AF7F96",
+    "orderId": 20,
+    "amount": 1012.50,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:04.1763032+03:00"
+  },
+  {
+    "transactionId": "TXN-729CA9151538",
+    "orderId": 7,
+    "amount": 218.00,
+    "status": "Captured",
+    "createdAt": "2026-10-25T00:06:04.1929073+03:00"
+  }
+]
